@@ -46,7 +46,7 @@ module AdaptiveExtensions =
         match task.Status with
         | TaskStatus.RanToCompletion -> tcs.TrySetResult task.Result |> ignore<bool>
         | TaskStatus.Canceled ->
-          tcs.TrySetCanceled(TaskCanceledException(task).CancellationToken)
+          tcs.TrySetException(TaskCanceledException(task))
           |> ignore<bool>
         | TaskStatus.Faulted -> tcs.TrySetException(task.Exception.InnerExceptions) |> ignore<bool>
         | _ -> ()
@@ -115,6 +115,7 @@ type MapDisposableTupleVal<'T1, 'T2, 'Disposable when 'Disposable :> IDisposable
       b
 
 module AVal =
+
   let mapOption f = AVal.map (Option.map f)
 
   /// <summary>
@@ -403,12 +404,14 @@ and AdaptiveCancellableTask<'a>(cancel: unit -> unit, real: Task<'a>) =
   let mutable cachedTcs: TaskCompletionSource<'a> = null
   let mutable cached: Task<'a> = null
 
+
+
   let getTask () =
     let createCached () =
       if real.IsCompleted then
         real
       else
-        cachedTcs <- new TaskCompletionSource<'a>()
+        cachedTcs <- new TaskCompletionSource<'a>(TaskCreationOptions.RunContinuationsAsynchronously)
 
         cachedTcs.TrySetFromTaskFinished real
 
@@ -689,7 +692,7 @@ module AsyncAVal =
   /// adaptive inputs.
   /// </summary>
   let mapSync (mapping: 'a -> CancellationToken -> 'b) (input: asyncaval<'a>) =
-    map (fun a ct -> Task.Run(fun () -> mapping a ct)) input
+    map (fun a ct -> Task.Run((fun () -> mapping a ct), ct)) input
 
   /// <summary>
   /// Returns a new async adaptive value that adaptively applies the mapping function to the given
